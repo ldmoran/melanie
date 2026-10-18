@@ -1,35 +1,34 @@
 # Mel Wallet – Billetera Móvil Distribuida (Android / Kotlin)
 
-Cliente Android (Jetpack Compose) + backend simulado (Node) para el Proyecto Final UC 1.
+Cliente Android (Jetpack Compose) + backend (Node + SQLite embebido, **sin Docker**).
 
 ## Arquitectura
 | Requisito | Implementación |
 |---|---|
-| Room (SQLite) | `data/local/Local.kt` – entidad, DAO (`Flow`), base de datos |
-| REST | `data/remote/Remote.kt` – Retrofit + OkHttp (`/api/deposit`, `withdraw`, `transfer`, `services/pay`) |
-| WebSocket | `WalletSocket` – OkHttp WS con reconexión automática, `TRANSFER_IN` actualiza saldo e historial |
-| Corrutinas | Red y Room en `Dispatchers.IO`; la UI se actualiza vía `StateFlow` en `Main` (`WalletViewModel.kt`) |
-| UI | `ui/WalletScreen.kt` – saldo, indicador En línea/Desconectado, 4 acciones con diálogos, historial verde/rojo, icono distinto para servicios |
+| Registro / Login | `ui/AuthScreen.kt` + `/api/auth/register` y `/api/auth/login`. Contraseñas con **scrypt + sal** (nunca en texto plano); sesión por token Bearer |
+| Base de datos del servidor | **SQLite** (`backend/wallet.db`, se crea sola): usuarios, sesiones, movimientos |
+| Room (SQLite local) | `data/local/Local.kt` – historial por usuario, sobrevive al reiniciar |
+| REST | `data/remote/Remote.kt` – Retrofit + OkHttp (depósito, retiro, transferencia, pago de servicios) |
+| WebSocket | `WalletSocket` – OkHttp WS autenticado por token, reconexión automática |
+| Corrutinas | Red y Room en `Dispatchers.IO`; la UI se actualiza vía `StateFlow` en `Main` |
 
-## 1. Levantar el backend
+## 1. Levantar el backend (Node ≥ 22.13)
 ```bash
 cd backend
 npm install
-npm start      # http://localhost:3000
+npm start      # http://localhost:3000  (crea backend/wallet.db)
 ```
 
-## 2. Compilar / ejecutar la app
-Abrir la carpeta `melanie` en Android Studio y ejecutar en el emulador (usa `10.0.2.2:3000` por defecto).
-En un celular real: ⚙ dentro de la app → poner `IP-de-tu-PC:3000` (misma red WiFi).
-APK: `app/build/outputs/apk/debug/app-debug.apk` (`./gradlew assembleDebug`, JDK 17+).
+## 2. Ejecutar la app
+Abrir la carpeta en Android Studio → Run ▶ en el emulador (usa `10.0.2.2:3000`).
+En un celular real: en la pantalla de login, tocar **Servidor** y poner `IP-de-tu-PC:3000` (misma WiFi).
+APK listo: `apk/mel-wallet.apk`.
 
 ## 3. Demo con Postman (defensa)
-Cuenta de la app: `ACC-1001`. Enviar dinero "desde otro usuario":
+1. Crear una cuenta en la app (se le asigna un número, p. ej. `ACC-4821`, visible en la cabecera).
+2. Importar `backend/postman_collection.json`.
+3. Ejecutar *1. Login como Cliente Demo* (`demo@mel.com` / `demo1234`, tiene $1000).
+4. Poner la cuenta de la app en la variable `destino` y ejecutar *2. Transferir*.
+   El saldo y el historial de la app cambian al instante por WebSocket.
 
-`POST http://localhost:3000/api/transfer`
-```json
-{ "from": "ACC-2002", "to": "ACC-1001", "amount": 50 }
-```
-El saldo y el historial de la app cambian al instante por WebSocket.
-
-Pago de servicios: contrato `LUZ-123456`, `AGUA-123456` o `NET-123456`. Error de saldo insuficiente responde HTTP 409 y la app muestra el mensaje.
+Pago de servicios: contrato `LUZ-123456`, `AGUA-123456` o `NET-123456`.

@@ -6,20 +6,21 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 
-val Violet = Color(0xFF5B3FD9)
-val VioletDark = Color(0xFF2E1A87)
-val VioletLight = Color(0xFF8B6CFF)
-val Income = Color(0xFF12B76A)
-val Expense = Color(0xFFE5484D)
-val Surface0 = Color(0xFFF4F3FA)
-val Ink = Color(0xFF16142B)
-val Muted = Color(0xFF7A7892)
+val BrandDark = Color(0xFF0A2B27)
+val Brand = Color(0xFF13524A)
+val BrandLight = Color(0xFF1E7568)
+val Lime = Color(0xFFD6F26B)
+val Income = Color(0xFF17995F)
+val Expense = Color(0xFFD64541)
+val Cream = Color(0xFFF5F2EA)
+val Ink = Color(0xFF14201E)
+val Muted = Color(0xFF6C7875)
 
 private val scheme = lightColorScheme(
-    primary = Violet,
+    primary = Brand,
     onPrimary = Color.White,
     secondary = Income,
-    background = Surface0,
+    background = Cream,
     surface = Color.White,
     onSurface = Ink,
     error = Expense,

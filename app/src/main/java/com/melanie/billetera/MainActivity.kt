@@ -1,10 +1,11 @@
-package com.melanie.billetera
+﻿package com.melanie.billetera
 
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
+import com.melanie.billetera.ui.AuthScreen
 import com.melanie.billetera.ui.WalletScreen
 import com.melanie.billetera.ui.theme.WalletTheme
 
@@ -14,6 +15,9 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        setContent { WalletTheme { WalletScreen(vm) } }
+        setContent {
+            WalletTheme { if (vm.session == null) AuthScreen(vm) else WalletScreen(vm) }
+        }
     }
 }
+

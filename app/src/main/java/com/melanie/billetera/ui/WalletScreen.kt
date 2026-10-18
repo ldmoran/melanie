@@ -1,4 +1,4 @@
-package com.melanie.billetera.ui
+﻿package com.melanie.billetera.ui
 
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
@@ -39,7 +39,7 @@ import java.util.Locale
 private enum class Op(val title: String, val icon: ImageVector, val color: Color) {
     DEPOSIT("Depositar", Icons.Rounded.ArrowDownward, Color(0xFF12B76A)),
     WITHDRAW("Retirar", Icons.Rounded.ArrowUpward, Color(0xFFF79009)),
-    TRANSFER("Transferir", Icons.Rounded.SwapHoriz, Color(0xFF5B3FD9)),
+    TRANSFER("Transferir", Icons.Rounded.SwapHoriz, Color(0xFF13524A)),
     SERVICE("Pagar Servicios", Icons.Rounded.ReceiptLong, Color(0xFF0BA5EC)),
 }
 
@@ -64,7 +64,7 @@ fun WalletScreen(vm: WalletViewModel) {
     }
 
     Scaffold(
-        containerColor = Surface0,
+        containerColor = Cream,
         contentWindowInsets = WindowInsets(0),
         snackbarHost = {
             SnackbarHost(snack, modifier = Modifier.navigationBarsPadding()) {
@@ -76,7 +76,7 @@ fun WalletScreen(vm: WalletViewModel) {
         },
     ) { pad ->
         Column(Modifier.fillMaxSize().padding(bottom = pad.calculateBottomPadding())) {
-            Header(balance, connected, vm.account, busy) { showConfig = true }
+            Header(balance, connected, vm.session?.name.orEmpty(), vm.session?.account.orEmpty(), busy) { showConfig = true }
 
             Spacer(Modifier.height(18.dp))
             ActionPanel(enabled = !busy) { op = it }
@@ -118,20 +118,20 @@ fun WalletScreen(vm: WalletViewModel) {
             },
         )
     }
-    if (showConfig) ConfigDialog(vm.host, vm.account, { showConfig = false }) { h, a ->
-        vm.saveConfig(h, a); showConfig = false
+    if (showConfig) AccountDialog(vm.session, vm.host, { showConfig = false }, { vm.saveHost(it) }) {
+        showConfig = false; vm.logout()
     }
 }
 
 // ---------------- Cabecera ----------------
 @Composable
-private fun Header(balance: Double, connected: Boolean, account: String, busy: Boolean, onSettings: () -> Unit) {
+private fun Header(balance: Double, connected: Boolean, name: String, account: String, busy: Boolean, onSettings: () -> Unit) {
     val animated by animateFloatAsState(balance.toFloat(), tween(700), label = "balance")
     Box(
         Modifier.fillMaxWidth()
             .shadow(12.dp, RoundedCornerShape(bottomStart = 36.dp, bottomEnd = 36.dp))
             .clip(RoundedCornerShape(bottomStart = 36.dp, bottomEnd = 36.dp))
-            .background(Brush.linearGradient(listOf(VioletDark, Violet, VioletLight)))
+            .background(Brush.linearGradient(listOf(BrandDark, Brand, BrandLight)))
     ) {
         // círculos decorativos
         Box(Modifier.size(180.dp).offset(x = 230.dp, y = (-50).dp).clip(CircleShape).background(Color.White.copy(alpha = .07f)))
@@ -145,8 +145,8 @@ private fun Header(balance: Double, connected: Boolean, account: String, busy: B
                 ) { Icon(Icons.Rounded.AccountBalanceWallet, null, tint = Color.White) }
                 Spacer(Modifier.width(12.dp))
                 Column(Modifier.weight(1f)) {
-                    Text("Mel Wallet", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 17.sp)
-                    Text(account, color = Color.White.copy(alpha = .75f), fontSize = 12.sp)
+                    Text("Hola, ${name.substringBefore(' ')}", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 17.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text("Cuenta $account", color = Lime, fontSize = 12.sp, fontWeight = FontWeight.Medium)
                 }
                 ConnectionPill(connected)
                 IconButton(onClick = onSettings) {
@@ -333,24 +333,31 @@ private fun OperationDialog(op: Op, onDismiss: () -> Unit, onConfirm: (String, D
 }
 
 @Composable
-private fun ConfigDialog(host: String, account: String, onDismiss: () -> Unit, onSave: (String, String) -> Unit) {
+private fun AccountDialog(
+    session: com.melanie.billetera.Session?, host: String,
+    onDismiss: () -> Unit, onSaveHost: (String) -> Unit, onLogout: () -> Unit,
+) {
     var h by remember { mutableStateOf(host) }
-    var a by remember { mutableStateOf(account) }
     AlertDialog(
         onDismissRequest = onDismiss,
         shape = RoundedCornerShape(28.dp),
         containerColor = Color.White,
-        title = { Text("Conexión", fontWeight = FontWeight.Bold) },
+        title = { Text(session?.name ?: "Mi cuenta", fontWeight = FontWeight.Bold) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(session?.email.orEmpty(), color = Muted, fontSize = 14.sp)
+                Text("Cuenta ${session?.account.orEmpty()}", color = Brand, fontWeight = FontWeight.SemiBold)
                 OutlinedTextField(h, { h = it }, singleLine = true, label = { Text("Servidor (host:puerto)") },
-                    supportingText = { Text("Emulador: 10.0.2.2:3000 · Celular: IP de tu PC") },
+                    supportingText = { Text("Emulador: 10.0.2.2:3000") },
                     shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth())
-                OutlinedTextField(a, { a = it }, singleLine = true, label = { Text("Mi cuenta") },
-                    shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth())
+                TextButton(onLogout) {
+                    Icon(Icons.Rounded.Logout, null, tint = Expense, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text("Cerrar sesión", color = Expense, fontWeight = FontWeight.SemiBold)
+                }
             }
         },
-        confirmButton = { Button({ onSave(h, a) }, shape = RoundedCornerShape(14.dp)) { Text("Guardar") } },
-        dismissButton = { TextButton(onDismiss) { Text("Cancelar", color = Muted) } },
+        confirmButton = { Button({ onSaveHost(h); onDismiss() }, shape = RoundedCornerShape(14.dp)) { Text("Guardar") } },
+        dismissButton = { TextButton(onDismiss) { Text("Cerrar", color = Muted) } },
     )
 }

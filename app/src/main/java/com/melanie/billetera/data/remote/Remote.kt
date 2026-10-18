@@ -14,9 +14,18 @@ import retrofit2.http.Path
 import java.util.concurrent.TimeUnit
 
 // ---------- REST ----------
-data class DepositReq(val account: String, val amount: Double)
-data class TransferReq(val from: String, val to: String, val amount: Double)
-data class ServiceReq(val account: String, val contract: String, val amount: Double)
+data class AuthReq(val name: String? = null, val email: String, val password: String)
+data class UserDto(val name: String, val email: String, val account: String, val balance: Double)
+data class AuthResponse(
+    val ok: Boolean = true,
+    val message: String? = null,
+    val token: String? = null,
+    val user: UserDto? = null,
+)
+
+data class AmountReq(val amount: Double)
+data class TransferReq(val to: String, val amount: Double)
+data class ServiceReq(val contract: String, val amount: Double)
 
 data class OpResponse(
     val ok: Boolean = true,
@@ -27,9 +36,11 @@ data class OpResponse(
 )
 
 interface WalletApi {
-    @GET("api/balance/{account}") suspend fun balance(@Path("account") account: String): OpResponse
-    @POST("api/deposit") suspend fun deposit(@Body b: DepositReq): OpResponse
-    @POST("api/withdraw") suspend fun withdraw(@Body b: DepositReq): OpResponse
+    @POST("api/auth/register") suspend fun register(@Body b: AuthReq): AuthResponse
+    @POST("api/auth/login") suspend fun login(@Body b: AuthReq): AuthResponse
+    @GET("api/me") suspend fun me(): AuthResponse
+    @POST("api/deposit") suspend fun deposit(@Body b: AmountReq): OpResponse
+    @POST("api/withdraw") suspend fun withdraw(@Body b: AmountReq): OpResponse
     @POST("api/transfer") suspend fun transfer(@Body b: TransferReq): OpResponse
     @POST("api/services/pay") suspend fun payService(@Body b: ServiceReq): OpResponse
 }
@@ -41,10 +52,15 @@ fun normalizeBase(host: String): String {
     return h
 }
 
-fun buildApi(host: String): WalletApi {
+fun buildApi(host: String, token: () -> String?): WalletApi {
     val client = OkHttpClient.Builder()
         .connectTimeout(8, TimeUnit.SECONDS)
         .readTimeout(10, TimeUnit.SECONDS)
+        .addInterceptor { chain ->
+            val req = chain.request().newBuilder()
+            token()?.let { req.header("Authorization", "Bearer $it") }
+            chain.proceed(req.build())
+        }
         .build()
     return Retrofit.Builder()
         .baseUrl(normalizeBase(host))
@@ -90,9 +106,9 @@ class WalletSocket(private val scope: CoroutineScope) {
     private val gson = Gson()
     private var job: Job? = null
 
-    fun start(host: String, account: String) {
+    fun start(host: String, token: String) {
         stop()
-        val url = normalizeBase(host).replaceFirst("http", "ws") + "ws?account=$account"
+        val url = normalizeBase(host).replaceFirst("http", "ws") + "ws?token=$token"
         job = scope.launch(Dispatchers.IO) {
             while (isActive) {
                 val closed = CompletableDeferred<Unit>()

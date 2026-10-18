@@ -12,10 +12,14 @@ import com.melanie.billetera.data.local.TransactionEntity
 import com.melanie.billetera.data.local.TxType
 import com.melanie.billetera.data.remote.*
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
+data class Session(val token: String, val name: String, val email: String, val account: String)
+
+@OptIn(ExperimentalCoroutinesApi::class)
 class WalletViewModel(app: Application) : AndroidViewModel(app) {
     private val prefs = app.getSharedPreferences("wallet", Context.MODE_PRIVATE)
     private val dao = AppDatabase.get(app).transactionDao()
@@ -23,10 +27,14 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
 
     var host by mutableStateOf(prefs.getString("host", "10.0.2.2:3000")!!)
         private set
-    var account by mutableStateOf(prefs.getString("account", "ACC-1001")!!)
+
+    @Volatile private var token: String? = prefs.getString("token", null)
+    var session by mutableStateOf(loadSession())
         private set
 
-    private var api: WalletApi = buildApi(host)
+    private var api: WalletApi = buildApi(host) { token }
+
+    private val accountFlow = MutableStateFlow(session?.account ?: "")
 
     private val _balance = MutableStateFlow(prefs.getFloat("balance", 0f).toDouble())
     val balance: StateFlow<Double> = _balance
@@ -38,8 +46,9 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
     private val _messages = MutableSharedFlow<UiMessage>(extraBufferCapacity = 8)
     val messages: SharedFlow<UiMessage> = _messages
 
-    // Historial reactivo: Room -> Flow (en IO) -> UI (Main)
-    val history: StateFlow<List<TransactionEntity>> = dao.observeAll()
+    // Historial reactivo: Room -> Flow (en IO) -> UI (Main). Solo del usuario con sesión.
+    val history: StateFlow<List<TransactionEntity>> = accountFlow
+        .flatMapLatest { dao.observeAll(it) }
         .flowOn(Dispatchers.IO)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
@@ -49,9 +58,10 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
             socket.events.collect { ev ->
                 when (ev.type) {
                     "TRANSFER_IN" -> {
+                        val owner = session?.account ?: return@collect
                         dao.insert(
                             TransactionEntity(
-                                type = TxType.TRANSFER_IN.name, amount = ev.amount,
+                                owner = owner, type = TxType.TRANSFER_IN.name, amount = ev.amount,
                                 counterpart = ev.from, category = null, detail = null,
                                 reference = ev.reference,
                                 timestamp = if (ev.timestamp > 0) ev.timestamp else System.currentTimeMillis(),
@@ -64,7 +74,15 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
                 }
             }
         }
-        reconnect()
+        if (session != null) connectSession()
+    }
+
+    private fun loadSession(): Session? {
+        val t = prefs.getString("token", null) ?: return null
+        return Session(
+            t, prefs.getString("name", "")!!, prefs.getString("email", "")!!,
+            prefs.getString("account", "")!!,
+        )
     }
 
     private fun setBalance(value: Double) {
@@ -72,38 +90,43 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
         prefs.edit().putFloat("balance", value.toFloat()).apply()
     }
 
-    private fun reconnect() {
-        socket.start(host, account)
+    private fun connectSession() {
+        val t = token ?: return
+        socket.start(host, t)
         viewModelScope.launch(Dispatchers.IO) {
-            runCatching { api.balance(account) }.onSuccess { setBalance(it.balance) }
+            try {
+                api.me().let { r -> r.user?.let { setBalance(it.balance) } }
+            } catch (e: retrofit2.HttpException) {
+                if (e.code() == 401) withContext(Dispatchers.Main) { logout("Tu sesión expiró") }
+            } catch (_: Exception) { /* sin red: se usa el saldo guardado */ }
         }
     }
 
-    fun saveConfig(newHost: String, newAccount: String) {
+    fun saveHost(newHost: String) {
         host = newHost.trim().ifBlank { host }
-        account = newAccount.trim().ifBlank { account }
-        prefs.edit().putString("host", host).putString("account", account).apply()
-        api = buildApi(host)
-        reconnect()
+        prefs.edit().putString("host", host).apply()
+        api = buildApi(host) { token }
+        if (session != null) connectSession()
     }
 
-    // ---------- Operaciones (REST en IO, persistencia en IO, resultado a Main) ----------
-    private fun run(
-        onOk: String,
-        call: suspend () -> OpResponse,
-        toTx: (OpResponse) -> TransactionEntity,
-    ) {
+    // ---------- Autenticación ----------
+    fun authenticate(register: Boolean, name: String, email: String, password: String) {
         if (_busy.value) return
         viewModelScope.launch {
             _busy.value = true
             try {
                 val res = withContext(Dispatchers.IO) {
-                    val r = call()
-                    dao.insert(toTx(r))
-                    r
+                    if (register) api.register(AuthReq(name.trim(), email.trim(), password))
+                    else api.login(AuthReq(null, email.trim(), password))
                 }
-                setBalance(res.balance)
-                _messages.emit(UiMessage(onOk, true))
+                val u = res.user!!
+                token = res.token
+                prefs.edit().putString("token", res.token).putString("name", u.name)
+                    .putString("email", u.email).putString("account", u.account).apply()
+                setBalance(u.balance)
+                accountFlow.value = u.account
+                session = Session(res.token!!, u.name, u.email, u.account)
+                connectSession()
             } catch (e: Exception) {
                 _messages.emit(UiMessage(e.friendlyMessage(), false))
             } finally {
@@ -112,28 +135,69 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    private fun tx(type: TxType, amount: Double, counterpart: String? = null,
+    fun logout(reason: String? = null) {
+        socket.stop()
+        token = null
+        prefs.edit().remove("token").remove("name").remove("email").remove("account")
+            .remove("balance").apply()
+        _balance.value = 0.0
+        accountFlow.value = ""
+        session = null
+        if (reason != null) _messages.tryEmit(UiMessage(reason, false))
+    }
+
+    // ---------- Operaciones (REST en IO, persistencia en IO, resultado a Main) ----------
+    private fun run(
+        onOk: String,
+        call: suspend () -> OpResponse,
+        toTx: (OpResponse, String) -> TransactionEntity,
+    ) {
+        if (_busy.value) return
+        val owner = session?.account ?: return
+        viewModelScope.launch {
+            _busy.value = true
+            try {
+                val res = withContext(Dispatchers.IO) {
+                    val r = call()
+                    dao.insert(toTx(r, owner))
+                    r
+                }
+                setBalance(res.balance)
+                _messages.emit(UiMessage(onOk, true))
+            } catch (e: retrofit2.HttpException) {
+                if (e.code() == 401) logout(e.friendlyMessage())
+                else _messages.emit(UiMessage(e.friendlyMessage(), false))
+            } catch (e: Exception) {
+                _messages.emit(UiMessage(e.friendlyMessage(), false))
+            } finally {
+                _busy.value = false
+            }
+        }
+    }
+
+    private fun tx(owner: String, type: TxType, amount: Double, counterpart: String? = null,
                    category: String? = null, detail: String? = null, ref: String? = null) =
         TransactionEntity(
-            type = type.name, amount = amount, counterpart = counterpart, category = category,
-            detail = detail, reference = ref, timestamp = System.currentTimeMillis(),
+            owner = owner, type = type.name, amount = amount, counterpart = counterpart,
+            category = category, detail = detail, reference = ref,
+            timestamp = System.currentTimeMillis(),
         )
 
     fun deposit(amount: Double) = run("Depósito de ${money(amount)} exitoso",
-        { api.deposit(DepositReq(account, amount)) }) { tx(TxType.DEPOSIT, amount, ref = it.reference) }
+        { api.deposit(AmountReq(amount)) }) { r, o -> tx(o, TxType.DEPOSIT, amount, ref = r.reference) }
 
     fun withdraw(amount: Double) = run("Retiro de ${money(amount)} exitoso",
-        { api.withdraw(DepositReq(account, amount)) }) { tx(TxType.WITHDRAW, amount, ref = it.reference) }
+        { api.withdraw(AmountReq(amount)) }) { r, o -> tx(o, TxType.WITHDRAW, amount, ref = r.reference) }
 
-    fun transfer(to: String, amount: Double) = run("Enviaste ${money(amount)} a $to",
-        { api.transfer(TransferReq(account, to, amount)) }) {
-        tx(TxType.TRANSFER_OUT, amount, counterpart = to, ref = it.reference)
+    fun transfer(to: String, amount: Double) = run("Enviaste ${money(amount)} a ${to.uppercase()}",
+        { api.transfer(TransferReq(to, amount)) }) { r, o ->
+        tx(o, TxType.TRANSFER_OUT, amount, counterpart = to.uppercase(), ref = r.reference)
     }
 
     fun payService(contract: String, amount: Double) = run("Servicio pagado: ${money(amount)}",
-        { api.payService(ServiceReq(account, contract.trim().uppercase(), amount)) }) {
-        tx(TxType.SERVICE, amount, counterpart = contract.trim().uppercase(),
-            category = "Servicio Básico", detail = it.service, ref = it.reference)
+        { api.payService(ServiceReq(contract.trim().uppercase(), amount)) }) { r, o ->
+        tx(o, TxType.SERVICE, amount, counterpart = contract.trim().uppercase(),
+            category = "Servicio Básico", detail = r.service, ref = r.reference)
     }
 }
 

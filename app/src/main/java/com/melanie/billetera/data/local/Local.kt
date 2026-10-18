@@ -9,7 +9,8 @@ enum class TxType { DEPOSIT, WITHDRAW, TRANSFER_OUT, TRANSFER_IN, SERVICE }
 @Entity(tableName = "transactions")
 data class TransactionEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
-    val type: String,          // TxType.name
+    val owner: String,         // cuenta dueña del movimiento (cada usuario ve solo el suyo)
+    val type: String,         // TxType.name
     val amount: Double,
     val counterpart: String?,  // cuenta destino/origen o código de contrato
     val category: String?,     // "Servicio Básico" para pagos de servicios
@@ -23,14 +24,14 @@ data class TransactionEntity(
 
 @Dao
 interface TransactionDao {
-    @Query("SELECT * FROM transactions ORDER BY timestamp DESC, id DESC")
-    fun observeAll(): Flow<List<TransactionEntity>>
+    @Query("SELECT * FROM transactions WHERE owner = :owner ORDER BY timestamp DESC, id DESC")
+    fun observeAll(owner: String): Flow<List<TransactionEntity>>
 
     @Insert
     suspend fun insert(tx: TransactionEntity): Long
 }
 
-@Database(entities = [TransactionEntity::class], version = 1, exportSchema = false)
+@Database(entities = [TransactionEntity::class], version = 2, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun transactionDao(): TransactionDao
 
@@ -40,7 +41,7 @@ abstract class AppDatabase : RoomDatabase() {
         fun get(context: Context): AppDatabase = instance ?: synchronized(this) {
             instance ?: Room.databaseBuilder(
                 context.applicationContext, AppDatabase::class.java, "wallet.db"
-            ).build().also { instance = it }
+            ).fallbackToDestructiveMigration().build().also { instance = it }
         }
     }
 }
