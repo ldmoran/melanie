@@ -85,9 +85,6 @@ function openSession(user) {
 
 const publicUser = (u) => ({ name: u.name, email: u.email, account: u.account, balance: u.balance });
 
-// usuario de demostración (para simular "otro usuario" desde Postman)
-if (!q.userByEmail.get('demo@mel.com')) createUser('Cliente Demo', 'demo@mel.com', 'demo1234', 1000, 'ACC-2002');
-
 // ---------- WebSocket: sockets por cuenta ----------
 const sockets = new Map();
 function push(account, payload) {

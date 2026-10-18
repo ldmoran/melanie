@@ -10,20 +10,32 @@
   ],
   "item": [
     {
-      "name": "1. Login como Cliente Demo (guarda el token)",
+      "name": "1. Registrar otro usuario (guarda el token)",
       "event": [{
         "listen": "test",
-        "script": { "type": "text/javascript", "exec": ["pm.collectionVariables.set('token', pm.response.json().token);"] }
+        "script": { "type": "text/javascript", "exec": ["const r = pm.response.json(); pm.collectionVariables.set('token', r.token); console.log('Cuenta: ' + r.user.account);"] }
       }],
       "request": {
         "method": "POST",
         "header": [{ "key": "Content-Type", "value": "application/json" }],
-        "body": { "mode": "raw", "raw": "{\"email\":\"demo@mel.com\",\"password\":\"demo1234\"}" },
-        "url": "{{base}}/api/auth/login"
+        "body": { "mode": "raw", "raw": "{\"name\":\"Usuario Postman\",\"email\":\"postman{{$timestamp}}@mel.com\",\"password\":\"postman123\"}" },
+        "url": "{{base}}/api/auth/register"
       }
     },
     {
-      "name": "2. Transferir a la cuenta de la app (cambia la variable 'destino')",
+      "name": "2. Depositar fondos a ese usuario",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Authorization", "value": "Bearer {{token}}" }
+        ],
+        "body": { "mode": "raw", "raw": "{\"amount\":1000}" },
+        "url": "{{base}}/api/deposit"
+      }
+    },
+    {
+      "name": "3. Transferir a la cuenta de la app (cambia la variable 'destino')",
       "request": {
         "method": "POST",
         "header": [

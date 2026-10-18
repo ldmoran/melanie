@@ -27,8 +27,8 @@ APK listo: `apk/mel-wallet.apk`.
 ## 3. Demo con Postman (defensa)
 1. Crear una cuenta en la app (se le asigna un número, p. ej. `ACC-4821`, visible en la cabecera).
 2. Importar `backend/postman_collection.json`.
-3. Ejecutar *1. Login como Cliente Demo* (`demo@mel.com` / `demo1234`, tiene $1000).
-4. Poner la cuenta de la app en la variable `destino` y ejecutar *2. Transferir*.
+3. Ejecutar *1. Registrar otro usuario* y *2. Depositar fondos* (la base arranca vacía, sin datos precargados).
+4. Poner la cuenta de la app en la variable `destino` y ejecutar *3. Transferir*.
    El saldo y el historial de la app cambian al instante por WebSocket.
 
 Pago de servicios: contrato `LUZ-123456`, `AGUA-123456` o `NET-123456`.
