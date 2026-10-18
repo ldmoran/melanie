@@ -2,6 +2,11 @@ package com.melanie.billetera
 
 import android.app.Application
 import android.content.Context
+import android.util.Base64
+import java.security.MessageDigest
+import java.security.SecureRandom
+import javax.crypto.SecretKeyFactory
+import javax.crypto.spec.PBEKeySpec
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -31,6 +36,20 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
     @Volatile private var token: String? = prefs.getString("token", null)
     var session by mutableStateOf(loadSession())
         private set
+
+    // ---------- PIN (bloqueo local de la app) ----------
+    var locked by mutableStateOf(session != null && hasPin(session?.account))
+        private set
+    var needsPinSetup by mutableStateOf(false)
+        private set
+    var pinEnabled by mutableStateOf(hasPin(session?.account))
+        private set
+    var pinError by mutableStateOf<String?>(null)
+        private set
+    /** Aviso que se muestra en la pantalla de login (p. ej. sesión expirada). */
+    var notice by mutableStateOf<String?>(null)
+        private set
+    fun clearNotice() { notice = null }
 
     private var api: WalletApi = buildApi(host) { token }
 
@@ -126,6 +145,9 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
                 setBalance(u.balance)
                 accountFlow.value = u.account
                 session = Session(res.token!!, u.name, u.email, u.account)
+                pinEnabled = hasPin(u.account)
+                locked = false
+                needsPinSetup = !pinEnabled
                 connectSession()
             } catch (e: Exception) {
                 _messages.emit(UiMessage(e.friendlyMessage(), false))
@@ -142,9 +164,80 @@ class WalletViewModel(app: Application) : AndroidViewModel(app) {
             .remove("balance").apply()
         _balance.value = 0.0
         accountFlow.value = ""
+        locked = false
+        needsPinSetup = false
+        pinEnabled = false
+        pinError = null
         session = null
-        if (reason != null) _messages.tryEmit(UiMessage(reason, false))
+        if (reason != null) notice = reason
     }
+
+    // ---------- PIN ----------
+    private fun hasPin(account: String?) = account != null && prefs.contains("pin_hash_$account")
+
+    private fun hashPin(pin: String, salt: ByteArray): ByteArray {
+        val spec = PBEKeySpec(pin.toCharArray(), salt, 60_000, 256)
+        return SecretKeyFactory.getInstance("PBKDF2WithHmacSHA1").generateSecret(spec).encoded
+    }
+
+    fun startPinSetup() { needsPinSetup = true }
+    fun skipPinSetup() { needsPinSetup = false }
+
+    fun setupPin(pin: String) {
+        val acct = session?.account ?: return
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) {
+                val salt = ByteArray(16).also { SecureRandom().nextBytes(it) }
+                prefs.edit()
+                    .putString("pin_salt_$acct", Base64.encodeToString(salt, Base64.NO_WRAP))
+                    .putString("pin_hash_$acct", Base64.encodeToString(hashPin(pin, salt), Base64.NO_WRAP))
+                    .putInt("pin_fails_$acct", 0).apply()
+            }
+            pinEnabled = true
+            needsPinSetup = false
+            _messages.emit(UiMessage("PIN creado", true))
+        }
+    }
+
+    fun unlockWithPin(pin: String) {
+        val acct = session?.account ?: return
+        viewModelScope.launch {
+            val ok = withContext(Dispatchers.IO) {
+                val salt = Base64.decode(prefs.getString("pin_salt_$acct", "") ?: "", Base64.NO_WRAP)
+                val saved = Base64.decode(prefs.getString("pin_hash_$acct", "") ?: "", Base64.NO_WRAP)
+                MessageDigest.isEqual(saved, hashPin(pin, salt))
+            }
+            if (ok) {
+                prefs.edit().putInt("pin_fails_$acct", 0).apply()
+                pinError = null
+                locked = false
+            } else {
+                val fails = prefs.getInt("pin_fails_$acct", 0) + 1
+                prefs.edit().putInt("pin_fails_$acct", fails).apply()
+                if (fails >= MAX_PIN_FAILS) forgotPin("Demasiados intentos. Inicia sesión con tu contraseña")
+                else pinError = "PIN incorrecto. Te quedan ${MAX_PIN_FAILS - fails} intentos"
+            }
+        }
+    }
+
+    fun removePin() {
+        val acct = session?.account ?: return
+        clearPinData(acct)
+        pinEnabled = false
+        viewModelScope.launch { _messages.emit(UiMessage("PIN eliminado", true)) }
+    }
+
+    /** Olvidó el PIN o se pasó de intentos: se borra el PIN y se pide la contraseña. */
+    fun forgotPin(reason: String? = null) {
+        session?.account?.let { clearPinData(it) }
+        logout(reason)
+    }
+
+    private fun clearPinData(acct: String) {
+        prefs.edit().remove("pin_hash_$acct").remove("pin_salt_$acct").remove("pin_fails_$acct").apply()
+    }
+
+    companion object { const val MAX_PIN_FAILS = 5 }
 
     // ---------- Operaciones (REST en IO, persistencia en IO, resultado a Main) ----------
     private fun run(

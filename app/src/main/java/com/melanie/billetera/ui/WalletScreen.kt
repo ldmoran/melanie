@@ -118,9 +118,10 @@ fun WalletScreen(vm: WalletViewModel) {
             },
         )
     }
-    if (showConfig) AccountDialog(vm.session, vm.host, { showConfig = false }, { vm.saveHost(it) }) {
-        showConfig = false; vm.logout()
-    }
+    if (showConfig) AccountDialog(
+        vm.session, vm.host, vm.pinEnabled, { showConfig = false }, { vm.saveHost(it) },
+        onPin = { showConfig = false; if (vm.pinEnabled) vm.removePin() else vm.startPinSetup() },
+    ) { showConfig = false; vm.logout() }
 }
 
 // ---------------- Cabecera ----------------
@@ -334,8 +335,8 @@ private fun OperationDialog(op: Op, onDismiss: () -> Unit, onConfirm: (String, D
 
 @Composable
 private fun AccountDialog(
-    session: com.melanie.billetera.Session?, host: String,
-    onDismiss: () -> Unit, onSaveHost: (String) -> Unit, onLogout: () -> Unit,
+    session: com.melanie.billetera.Session?, host: String, pinEnabled: Boolean,
+    onDismiss: () -> Unit, onSaveHost: (String) -> Unit, onPin: () -> Unit, onLogout: () -> Unit,
 ) {
     var h by remember { mutableStateOf(host) }
     AlertDialog(
@@ -350,6 +351,11 @@ private fun AccountDialog(
                 OutlinedTextField(h, { h = it }, singleLine = true, label = { Text("Servidor (host:puerto)") },
                     supportingText = { Text("Emulador: 10.0.2.2:3000") },
                     shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth())
+                TextButton(onPin) {
+                    Icon(Icons.Rounded.Lock, null, tint = Brand, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text(if (pinEnabled) "Quitar PIN" else "Crear PIN de acceso", color = Brand, fontWeight = FontWeight.SemiBold)
+                }
                 TextButton(onLogout) {
                     Icon(Icons.Rounded.Logout, null, tint = Expense, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(6.dp))

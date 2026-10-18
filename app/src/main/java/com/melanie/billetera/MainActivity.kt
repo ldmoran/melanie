@@ -6,6 +6,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import com.melanie.billetera.ui.AuthScreen
+import com.melanie.billetera.ui.PinScreen
 import com.melanie.billetera.ui.WalletScreen
 import com.melanie.billetera.ui.theme.WalletTheme
 
@@ -16,7 +17,13 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
-            WalletTheme { if (vm.session == null) AuthScreen(vm) else WalletScreen(vm) }
+            WalletTheme {
+                when {
+                    vm.session == null -> AuthScreen(vm)
+                    vm.needsPinSetup || vm.locked -> PinScreen(vm)
+                    else -> WalletScreen(vm)
+                }
+            }
         }
     }
 }

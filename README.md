@@ -6,6 +6,7 @@ Cliente Android (Jetpack Compose) + backend (Node + SQLite embebido, **sin Docke
 | Requisito | Implementación |
 |---|---|
 | Registro / Login | `ui/AuthScreen.kt` + `/api/auth/register` y `/api/auth/login`. Contraseña de mínimo 8 caracteres (mayúscula, minúscula y número), guardada con **scrypt + sal** (nunca en texto plano); sesión por token Bearer |
+| Acceso con PIN | `ui/PinScreen.kt` – PIN de 4 dígitos para desbloquear la app; guardado con PBKDF2 + sal, se bloquea a los 5 intentos fallidos |
 | Base de datos del servidor | **SQLite** (`backend/wallet.db`, se crea sola): usuarios, sesiones, movimientos |
 | Room (SQLite local) | `data/local/Local.kt` – historial por usuario, sobrevive al reiniciar |
 | REST | `data/remote/Remote.kt` – Retrofit + OkHttp (depósito, retiro, transferencia, pago de servicios) |

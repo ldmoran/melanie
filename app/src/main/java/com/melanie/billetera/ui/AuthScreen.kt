@@ -61,6 +61,10 @@ fun AuthScreen(vm: WalletViewModel) {
         }
     }
 
+    LaunchedEffect(vm.notice) {
+        vm.notice?.let { snack.showSnackbar(it); vm.clearNotice() }
+    }
+
     val emailOk = Regex("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$").matches(email.trim())
     val nameErr = tried && register && name.trim().length < 2
     val emailErr = tried && !emailOk
