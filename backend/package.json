@@ -1,0 +1,11 @@
+{
+  "name": "melanie-wallet-backend",
+  "version": "1.0.0",
+  "description": "Backend simulado para la Billetera Móvil Distribuida (REST + WebSocket)",
+  "main": "server.js",
+  "scripts": { "start": "node server.js" },
+  "dependencies": {
+    "express": "^4.21.2",
+    "ws": "^8.18.0"
+  }
+}
