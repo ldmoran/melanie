@@ -1,4 +1,4 @@
-{
+﻿{
   "info": {
     "name": "Mel Wallet - demo",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
@@ -18,7 +18,7 @@
       "request": {
         "method": "POST",
         "header": [{ "key": "Content-Type", "value": "application/json" }],
-        "body": { "mode": "raw", "raw": "{\"name\":\"Usuario Postman\",\"email\":\"postman{{$timestamp}}@mel.com\",\"password\":\"postman123\"}" },
+        "body": { "mode": "raw", "raw": "{\"name\":\"Usuario Postman\",\"email\":\"postman{{$timestamp}}@mel.com\",\"password\":\"Postman123\"}" },
         "url": "{{base}}/api/auth/register"
       }
     },
@@ -48,3 +48,4 @@
     }
   ]
 }
+

@@ -32,6 +32,14 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.melanie.billetera.WalletViewModel
 import com.melanie.billetera.ui.theme.*
 
+/** Requisitos de contraseña (los mismos que valida el servidor). */
+private val passwordRules: List<Pair<String, (String) -> Boolean>> = listOf(
+    "Mínimo 8 caracteres" to { p -> p.length >= 8 },
+    "Una letra mayúscula" to { p -> p.any { it.isUpperCase() } },
+    "Una letra minúscula" to { p -> p.any { it.isLowerCase() } },
+    "Un número" to { p -> p.any { it.isDigit() } },
+)
+
 @Composable
 fun AuthScreen(vm: WalletViewModel) {
     val busy by vm.busy.collectAsStateWithLifecycle()
@@ -56,12 +64,13 @@ fun AuthScreen(vm: WalletViewModel) {
     val emailOk = Regex("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$").matches(email.trim())
     val nameErr = tried && register && name.trim().length < 2
     val emailErr = tried && !emailOk
-    val passErr = tried && (if (register) pass.length < 6 else pass.isEmpty())
+    val passOk = passwordRules.all { it.second(pass) }
+    val passErr = tried && (if (register) !passOk else pass.isEmpty())
     val pass2Err = tried && register && pass2 != pass
 
     fun submit() {
         tried = true
-        val valid = emailOk && !nameErr && (if (register) pass.length >= 6 && pass2 == pass else pass.isNotEmpty())
+        val valid = emailOk && !nameErr && (if (register) passOk && pass2 == pass else pass.isNotEmpty())
             && (!register || name.trim().length >= 2)
         if (valid) vm.authenticate(register, name, email, pass)
     }
@@ -133,9 +142,24 @@ fun AuthScreen(vm: WalletViewModel) {
                     KeyboardOptions(keyboardType = KeyboardType.Email, imeAction = ImeAction.Next))
                 Spacer(Modifier.height(12.dp))
                 Field(pass, { pass = it }, "Contraseña", Icons.Rounded.Lock, passErr,
-                    if (register) "Mínimo 6 caracteres" else "Ingresa tu contraseña",
+                    if (register) "Revisa los requisitos de abajo" else "Ingresa tu contraseña",
                     KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = if (register) ImeAction.Next else ImeAction.Done),
                     password = true, visible = showPass, onToggle = { showPass = !showPass }, onDone = ::submit)
+                AnimatedVisibility(register) {
+                    Column(Modifier.padding(start = 6.dp, top = 2.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        passwordRules.forEach { (label, check) ->
+                            val ok = check(pass)
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    if (ok) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked, null,
+                                    tint = if (ok) Income else Muted.copy(alpha = .6f), modifier = Modifier.size(15.dp),
+                                )
+                                Spacer(Modifier.width(6.dp))
+                                Text(label, fontSize = 12.sp, color = if (ok) Income else Muted)
+                            }
+                        }
+                    }
+                }
                 AnimatedVisibility(register) {
                     Column {
                         Spacer(Modifier.height(12.dp))

@@ -108,7 +108,8 @@ app.post('/api/auth/register', (req, res) => {
   const password = String(req.body.password || '');
   if (name.length < 2) return fail(res, 400, 'Ingresa tu nombre');
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return fail(res, 400, 'Correo no válido');
-  if (password.length < 6) return fail(res, 400, 'La contraseña debe tener al menos 6 caracteres');
+  if (password.length < 8 || password.length > 128 || !/[a-z]/.test(password) || !/[A-Z]/.test(password) || !/\d/.test(password))
+    return fail(res, 400, 'La contraseña debe tener mínimo 8 caracteres, con mayúscula, minúscula y número');
   if (q.userByEmail.get(email)) return fail(res, 409, 'Ese correo ya está registrado');
   const user = createUser(name, email, password);
   res.status(201).json({ ok: true, message: 'Cuenta creada', token: openSession(user), user: publicUser(user) });
