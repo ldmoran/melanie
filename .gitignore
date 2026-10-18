@@ -8,3 +8,4 @@ captures/
 .cxx/
 node_modules/
 backend/wallet.db*
+docs/
